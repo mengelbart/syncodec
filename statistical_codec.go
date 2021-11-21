@@ -19,10 +19,17 @@ const (
 	defaultBurstFrameSize   = 13_500 // 13.5 KB
 	defaultT0               = 33 * time.Millisecond
 	defaultB0               = 4_170 // 4.17 KB
-	defaultScaleT           = 0.15
-	defaultScaleB           = 0.15
-	defaultRMin             = 150_000     // 150 kbps
-	defaultRMax             = 150_000_000 // 1.5 Mbps
+
+	// scaling parameter of zero-mean laplacian distribution describing
+	// deviations in normalized frame interval
+	defaultScaleT = 0.15
+
+	// scaling parameter of zero-mean laplacian distribution describing
+	// deviations in normalized frame size
+	defaultScaleB = 0.15
+
+	defaultRMin = 150_000     // 150 kbps
+	defaultRMax = 150_000_000 // 150 Mbps
 )
 
 type noiser interface {
@@ -67,14 +74,6 @@ type StatisticalCodec struct {
 	// reference frame size targetBitrateBps / fps
 	b0 int
 
-	// scaling parameter of zero-mean laplacian distribution describing
-	// deviations in normalized frame interval
-	scaleT float64
-
-	// scaling parameter of zero-mean laplacian distribution describing
-	// deviations in normalized frame size
-	scaleB float64
-
 	// max rate supported by video encoder
 	rMin int
 
@@ -114,6 +113,20 @@ func WithFramesPerSecond(fps int) StatisticalCodecOption {
 	}
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func NewStatisticalEncoder(w FrameWriter, opts ...StatisticalCodecOption) (*StatisticalCodec, error) {
 	sc := &StatisticalCodec{
 		targetBitrateBps:        defaultTargetBitrateBps,
@@ -123,8 +136,6 @@ func NewStatisticalEncoder(w FrameWriter, opts ...StatisticalCodecOption) (*Stat
 		burstFrameSize:          defaultBurstFrameSize,
 		t0:                      defaultT0,
 		b0:                      defaultB0,
-		scaleT:                  defaultScaleT,
-		scaleB:                  defaultScaleB,
 		rMin:                    defaultRMin,
 		rMax:                    defaultRMax,
 		writer:                  w,
@@ -149,6 +160,8 @@ func NewStatisticalEncoder(w FrameWriter, opts ...StatisticalCodecOption) (*Stat
 		}
 	}
 
+	sc.SetTargetBitrate(sc.targetBitrateBps)
+
 	return sc, nil
 }
 
@@ -160,9 +173,15 @@ func (c *StatisticalCodec) GetTargetBitrate() int {
 	return c.targetBitrateBps
 }
 
-// SetTargetBitrate sets the target bitrate to r bits per second.
+// SetTargetBitrate sets the target bitrate to r bits per second. If r is
+// greater than c.rMax, bitrate will be set to c.rMax. If r is lower than
+// c.rMin, bitrate will be set to c.rMin.
 func (c *StatisticalCodec) SetTargetBitrate(r int) {
-	c.targetBitrateBps = r
+	if r < c.targetBitrateBps {
+		c.targetBitrateBps = max(r, c.rMin)
+		return
+	}
+	c.targetBitrateBps = min(r, c.rMax)
 }
 
 // NextFrame returns the next faked video frame
