@@ -1,3 +1,3 @@
-module github.com/mengelbart/synthetic-codec
+module github.com/mengelbart/syncodec
 
 go 1.17
