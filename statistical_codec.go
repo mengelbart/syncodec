@@ -12,7 +12,7 @@ func init() {
 }
 
 const (
-	defaultTargetBitrateBps = 100_000_000 // 1 Mbps
+	defaultTargetBitrateBps = 1_000_000 // 1 Mbps
 	defaultFPS              = 30
 	defaultTau              = 200 * time.Millisecond
 	defaultBurstFrameCount  = 8
@@ -99,6 +99,13 @@ type StatisticalCodec struct {
 }
 
 type StatisticalCodecOption func(*StatisticalCodec) error
+
+func WithInitialTargetBitrate(targetBitrateBps int) StatisticalCodecOption {
+	return func(sc *StatisticalCodec) error {
+		sc.targetBitrateBps = targetBitrateBps
+		return nil
+	}
+}
 
 func WithFramesPerSecond(fps int) StatisticalCodecOption {
 	return func(sc *StatisticalCodec) error {
