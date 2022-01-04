@@ -1,6 +1,7 @@
 package syncodec
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -35,7 +36,8 @@ func (c *PerfectCodec) SetTargetBitrate(r int) {
 }
 
 func (c *PerfectCodec) Start() {
-	msToNextFrame := time.Duration((1.0/c.fps)*1000.0) * time.Millisecond
+	msToNextFrame := time.Duration((1.0/float64(c.fps))*1000.0) * time.Millisecond
+	fmt.Printf("ms: %v\n", msToNextFrame)
 	ticker := time.NewTicker(msToNextFrame)
 	for {
 		select {
