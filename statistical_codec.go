@@ -83,6 +83,14 @@ type StatisticalCodec struct {
 	// output writer
 	writer FrameWriter
 
+	// scaling parameter of zero-mean laplacian distribution describing
+	// deviations in normalized frame size
+	scaleB float64
+
+	// scaling parameter of zero-mean laplacian distribution describing
+	// deviations in normalized frame interval
+	scaleT float64
+
 	// internal types
 
 	targetBitrateLock       sync.Mutex
@@ -113,6 +121,20 @@ func WithFramesPerSecond(fps int) StatisticalCodecOption {
 	}
 }
 
+func WithScaleB(scale float64) StatisticalCodecOption {
+	return func(sc *StatisticalCodec) error {
+		sc.scaleB = scale
+		return nil
+	}
+}
+
+func WithScaleT(scale float64) StatisticalCodecOption {
+	return func(sc *StatisticalCodec) error {
+		sc.scaleT = scale
+		return nil
+	}
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -139,19 +161,15 @@ func NewStatisticalEncoder(w FrameWriter, opts ...StatisticalCodecOption) (*Stat
 		rMin:                    defaultRMin,
 		rMax:                    defaultRMax,
 		writer:                  w,
+		scaleB:                  defaultScaleB,
+		scaleT:                  defaultScaleT,
 		targetBitrateLock:       sync.Mutex{},
 		targetBitrateChan:       make(chan int),
 		lastTargetBitrateUpdate: time.Time{},
 		remainingBurstFrames:    0,
-		frameSizeNoiser: laplaceNoise{
-			rnd:   rand.New(rand.NewSource(time.Now().UnixNano())),
-			scale: defaultScaleB,
-		},
-		frameDurationNoiser: laplaceNoise{
-			rnd:   rand.New(rand.NewSource(time.Now().UnixNano())),
-			scale: defaultScaleT,
-		},
-		done: make(chan struct{}),
+		frameSizeNoiser:         nil,
+		frameDurationNoiser:     nil,
+		done:                    make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -160,6 +178,14 @@ func NewStatisticalEncoder(w FrameWriter, opts ...StatisticalCodecOption) (*Stat
 		}
 	}
 
+	sc.frameSizeNoiser = laplaceNoise{
+		rnd:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		scale: sc.scaleB,
+	}
+	sc.frameDurationNoiser = laplaceNoise{
+		rnd:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		scale: sc.scaleT,
+	}
 	sc.SetTargetBitrate(sc.targetBitrateBps)
 
 	return sc, nil
@@ -222,8 +248,8 @@ func (c *StatisticalCodec) Start() {
 		select {
 		case <-timer.C:
 			nextFrame := c.nextFrame()
-			c.writer.WriteFrame(nextFrame)
 			timer.Reset(nextFrame.Duration)
+			c.writer.WriteFrame(nextFrame)
 
 		case rate := <-c.targetBitrateChan:
 			if time.Since(c.lastTargetBitrateUpdate) < c.tau {
